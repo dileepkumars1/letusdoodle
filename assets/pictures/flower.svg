@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" fill="none" stroke="#2d2d2d" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+  <line x1="200" y1="240" x2="200" y2="360"/>
+  <path d="M200 300 Q160 300 145 270 Q180 275 200 300 Z"/>
+  <path d="M200 320 Q240 320 255 290 Q220 295 200 320 Z"/>
+  <path d="M200 126 C224 108 224 62 200 40 C176 62 176 108 200 126 Z"/>
+  <path d="M200 126 C224 108 224 62 200 40 C176 62 176 108 200 126 Z" transform="rotate(60 200 150)"/>
+  <path d="M200 126 C224 108 224 62 200 40 C176 62 176 108 200 126 Z" transform="rotate(120 200 150)"/>
+  <path d="M200 126 C224 108 224 62 200 40 C176 62 176 108 200 126 Z" transform="rotate(180 200 150)"/>
+  <path d="M200 126 C224 108 224 62 200 40 C176 62 176 108 200 126 Z" transform="rotate(240 200 150)"/>
+  <path d="M200 126 C224 108 224 62 200 40 C176 62 176 108 200 126 Z" transform="rotate(300 200 150)"/>
+  <circle cx="200" cy="150" r="26"/>
+</svg>

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Coloring</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="color-page">
+  <header class="color-topbar">
+    <button id="backBtn" class="icon-btn" aria-label="Back to gallery">←</button>
+    <h1 id="picTitle">Loading…</h1>
+    <button id="resetBtn" class="icon-btn" aria-label="Start over">↺</button>
+  </header>
+
+  <main id="stage" class="stage">
+    <div class="canvas-wrap">
+      <canvas id="paintCanvas"></canvas>
+      <canvas id="outlineCanvas"></canvas>
+    </div>
+    <div id="confetti" class="confetti-layer"></div>
+  </main>
+
+  <div class="toolbar">
+    <div class="tool-row">
+      <button id="toolBrush" class="tool-btn">🖌️ Brush</button>
+      <button id="toolFill" class="tool-btn">🪣 Fill</button>
+      <button id="undoBtn" class="tool-btn" disabled>⤺ Undo</button>
+    </div>
+
+    <div id="brushStyles" class="brush-styles"></div>
+
+    <div class="size-row">
+      <span>Size</span>
+      <input id="brushSize" type="range" min="6" max="48" value="22" />
+    </div>
+
+    <div id="palette" class="palette"></div>
+    <div class="custom-color-row">
+      <label for="customColor">Custom color</label>
+      <input id="customColor" type="color" value="#ff3b30" />
+    </div>
+
+    <button id="doneBtn" class="done-btn">I'm Done! ✓</button>
+  </div>
+
+  <script type="module" src="js/coloring.js"></script>
+</body>
+</html>

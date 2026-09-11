@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" fill="none" stroke="#2d2d2d" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+  <ellipse cx="200" cy="220" rx="110" ry="90"/>
+  <path d="M200 130 L160 190 L200 220 L240 190 Z"/>
+  <path d="M120 200 L200 220 L160 280 Z"/>
+  <path d="M280 200 L200 220 L240 280 Z"/>
+  <path d="M160 280 L200 220 L240 280 L200 310 Z"/>
+  <circle cx="330" cy="200" r="38"/>
+  <circle cx="345" cy="192" r="6"/>
+  <ellipse cx="110" cy="150" rx="30" ry="20" transform="rotate(-30 110 150)"/>
+  <ellipse cx="290" cy="150" rx="30" ry="20" transform="rotate(30 290 150)"/>
+  <ellipse cx="110" cy="290" rx="30" ry="20" transform="rotate(30 110 290)"/>
+  <ellipse cx="290" cy="290" rx="30" ry="20" transform="rotate(-30 290 290)"/>
+  <path d="M395 200 L365 195 L365 205 Z"/>
+</svg>

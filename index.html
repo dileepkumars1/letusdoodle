@@ -10,7 +10,11 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>🌈 Rainbow Coloring</h1>
+    <div class="topbar-row">
+      <span class="topbar-spacer"></span>
+      <h1>🌈 Rainbow Coloring</h1>
+      <button id="musicBtn" class="icon-btn" aria-label="Turn music on">🔈</button>
+    </div>
     <div class="progress-wrap">
       <div class="progress-track"><div id="progressBar" class="progress-fill"></div></div>
       <span id="progressText" class="progress-text">0 of 18 colored</span>
@@ -18,6 +22,19 @@
   </header>
 
   <div id="banner" class="banner"></div>
+
+  <a href="create.html" class="create-cta">
+    <span class="create-cta-icon">✨</span>
+    <span class="create-cta-text">
+      <strong>Create Your Own!</strong>
+      <small>Add shapes, draw, and colour a picture you design</small>
+    </span>
+  </a>
+
+  <section id="creationsSection" class="creations-section" hidden>
+    <h2 class="creations-title">My Creations</h2>
+    <div id="creationsStrip" class="creations-strip"></div>
+  </section>
 
   <main>
     <div id="grid" class="grid"></div>

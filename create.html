@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>Coloring</title>
+<title>Create Your Own</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="css/style.css" />
@@ -11,15 +11,15 @@
 <body class="color-page">
   <header class="color-topbar">
     <button id="backBtn" class="icon-btn" aria-label="Back to gallery">←</button>
-    <h1 id="picTitle">Loading…</h1>
+    <h1>✨ Create Your Own!</h1>
     <button id="musicBtn" class="icon-btn" aria-label="Turn music on">🔈</button>
-    <button id="resetBtn" class="icon-btn" aria-label="Start over">↺</button>
   </header>
 
   <main id="stage" class="stage">
     <div class="canvas-wrap">
       <canvas id="paintCanvas"></canvas>
-      <canvas id="outlineCanvas"></canvas>
+      <canvas id="shapesCanvas"></canvas>
+      <canvas id="selectionCanvas"></canvas>
     </div>
     <div id="confetti" class="confetti-layer"></div>
   </main>
@@ -28,21 +28,16 @@
     <div class="tool-row">
       <button id="toolBrush" class="tool-btn">🖌️ Brush</button>
       <button id="toolFill" class="tool-btn">🪣 Fill</button>
+      <button id="toolShapes" class="tool-btn">⭐ Shapes</button>
       <button id="undoBtn" class="tool-btn" disabled>⤺ Undo</button>
-    </div>
-
-    <div class="zoom-row">
-      <button id="toolZoom" class="tool-btn">🔍 Zoom</button>
-      <div id="zoomControls" class="zoom-controls" hidden>
-        <button id="zoomOut" class="zoom-btn" aria-label="Zoom out">－</button>
-        <span id="zoomLevelLabel" class="zoom-level">100%</span>
-        <button id="zoomIn" class="zoom-btn" aria-label="Zoom in">＋</button>
-      </div>
     </div>
 
     <div id="brushStyles" class="brush-styles"></div>
 
-    <div class="size-row">
+    <div id="shapePalette" class="brush-styles" hidden></div>
+    <button id="deleteShapeBtn" class="tool-btn danger-btn" hidden>🗑️ Delete Shape</button>
+
+    <div id="sizeRow" class="size-row">
       <span>Size</span>
       <input id="brushSize" type="range" min="6" max="48" value="22" />
     </div>
@@ -53,9 +48,10 @@
       <input id="customColor" type="color" value="#ff3b30" />
     </div>
 
-    <button id="doneBtn" class="done-btn">I'm Done! ✓</button>
+    <button id="saveBtn" class="done-btn">💾 Save My Picture!</button>
+    <button id="clearBtn" class="tool-btn">🧹 Start Over</button>
   </div>
 
-  <script type="module" src="js/coloring.js"></script>
+  <script type="module" src="js/create.js"></script>
 </body>
 </html>

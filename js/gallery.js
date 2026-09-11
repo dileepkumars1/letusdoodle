@@ -1,8 +1,11 @@
 import { PICTURES } from './pictures.js';
 import { loadProgress, isUnlocked, isCompleted } from './progress.js';
+import { initMusicToggle } from './audio.js';
 
 const state = loadProgress();
 const grid = document.getElementById('grid');
+
+initMusicToggle(document.getElementById('musicBtn'));
 
 const doneCount = PICTURES.filter((p) => isCompleted(state, p.id)).length;
 document.getElementById('progressText').textContent = `${doneCount} of ${PICTURES.length} colored`;
@@ -63,3 +66,53 @@ PICTURES.forEach((pic) => {
   card.appendChild(themeTag);
   grid.appendChild(card);
 });
+
+const CREATIONS_KEY = 'kidscolor_creations';
+
+function loadCreations() {
+  try {
+    return JSON.parse(localStorage.getItem(CREATIONS_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function renderCreations() {
+  const list = loadCreations();
+  const section = document.getElementById('creationsSection');
+  const strip = document.getElementById('creationsStrip');
+  strip.innerHTML = '';
+  if (!list.length) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+
+  list.forEach((creation) => {
+    const card = document.createElement('a');
+    card.className = 'creation-card';
+    card.href = `create.html?id=${encodeURIComponent(creation.id)}`;
+
+    const img = document.createElement('img');
+    img.src = creation.thumbnailDataURL;
+    img.alt = 'My creation';
+    card.appendChild(img);
+
+    const del = document.createElement('button');
+    del.className = 'creation-delete';
+    del.textContent = '✕';
+    del.setAttribute('aria-label', 'Delete this creation');
+    del.addEventListener('click', (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      const updated = loadCreations().filter((c) => c.id !== creation.id);
+      localStorage.setItem(CREATIONS_KEY, JSON.stringify(updated));
+      renderCreations();
+    });
+    card.appendChild(del);
+
+    strip.appendChild(card);
+  });
+}
+
+renderCreations();

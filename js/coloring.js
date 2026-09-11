@@ -1,5 +1,6 @@
 import { PICTURES, pictureIndex } from './pictures.js';
 import { loadProgress, isUnlocked, markCompleted } from './progress.js';
+import { initMusicToggle, playSuccessChime } from './audio.js';
 
 const SIZE = 800; // internal working resolution for all canvases
 
@@ -30,6 +31,7 @@ if (!picture || !isUnlocked(state, pictureId)) {
 document.getElementById('picTitle').textContent = picture.title;
 
 const stage = document.getElementById('stage');
+const canvasWrap = document.querySelector('.canvas-wrap');
 const paintCanvas = document.getElementById('paintCanvas');
 const outlineCanvas = document.getElementById('outlineCanvas');
 const paintCtx = paintCanvas.getContext('2d', { willReadFrequently: true });
@@ -48,6 +50,17 @@ let brushSize = 22;
 let drawing = false;
 let lastPt = null;
 const undoStack = [];
+
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 3;
+let zoomMode = false;
+let zoomLevel = 1;
+let panX = 0;
+let panY = 0;
+const activePointers = new Map(); // pointerId -> {x, y}, used for pan/pinch while zoomMode is on
+let panStart = null; // {x, y, panX, panY}
+let pinchStartDist = null;
+let pinchStartZoom = null;
 
 function pushUndo() {
   undoStack.push(paintCtx.getImageData(0, 0, SIZE, SIZE));
@@ -182,6 +195,63 @@ function brushLine(x0, y0, x1, y1) {
   }
 }
 
+function applyTransform() {
+  canvasWrap.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+}
+
+function clampPan() {
+  const maxX = (canvasWrap.clientWidth * (zoomLevel - 1)) / 2;
+  const maxY = (canvasWrap.clientHeight * (zoomLevel - 1)) / 2;
+  panX = Math.max(-maxX, Math.min(maxX, panX));
+  panY = Math.max(-maxY, Math.min(maxY, panY));
+}
+
+function setZoom(z) {
+  zoomLevel = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
+  clampPan();
+  applyTransform();
+  document.getElementById('zoomLevelLabel').textContent = Math.round(zoomLevel * 100) + '%';
+}
+
+function beginPanOrPinch(evt) {
+  activePointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+  if (activePointers.size === 2) {
+    const pts = Array.from(activePointers.values());
+    pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    pinchStartZoom = zoomLevel;
+    panStart = null;
+  } else if (activePointers.size === 1) {
+    panStart = { x: evt.clientX, y: evt.clientY, panX, panY };
+  }
+}
+
+function updatePanOrPinch(evt) {
+  if (!activePointers.has(evt.pointerId)) return;
+  activePointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+
+  if (activePointers.size >= 2 && pinchStartDist) {
+    const pts = Array.from(activePointers.values());
+    const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    setZoom(pinchStartZoom * (dist / pinchStartDist));
+  } else if (panStart) {
+    panX = panStart.panX + (evt.clientX - panStart.x);
+    panY = panStart.panY + (evt.clientY - panStart.y);
+    clampPan();
+    applyTransform();
+  }
+}
+
+function endPanOrPinch(evt) {
+  activePointers.delete(evt.pointerId);
+  if (activePointers.size < 2) pinchStartDist = null;
+  if (activePointers.size === 1) {
+    const [[, pt]] = activePointers.entries();
+    panStart = { x: pt.x, y: pt.y, panX, panY };
+  } else {
+    panStart = null;
+  }
+}
+
 function toCanvasCoords(evt) {
   const rect = paintCanvas.getBoundingClientRect();
   const x = ((evt.clientX - rect.left) / rect.width) * SIZE;
@@ -196,6 +266,12 @@ function onPointerDown(evt) {
   } catch {
     // Some environments (or synthetic events) don't have an active pointer to capture; safe to ignore.
   }
+
+  if (zoomMode) {
+    beginPanOrPinch(evt);
+    return;
+  }
+
   const [x, y] = toCanvasCoords(evt);
   pushUndo();
 
@@ -209,6 +285,11 @@ function onPointerDown(evt) {
 }
 
 function onPointerMove(evt) {
+  if (zoomMode) {
+    evt.preventDefault();
+    updatePanOrPinch(evt);
+    return;
+  }
   if (!drawing || currentTool !== 'brush') return;
   evt.preventDefault();
   const [x, y] = toCanvasCoords(evt);
@@ -216,7 +297,11 @@ function onPointerMove(evt) {
   lastPt = [x, y];
 }
 
-function onPointerUp() {
+function onPointerUp(evt) {
+  if (zoomMode) {
+    endPanOrPinch(evt);
+    return;
+  }
   drawing = false;
   lastPt = null;
 }
@@ -279,6 +364,21 @@ function setTool(tool) {
 document.getElementById('toolBrush').addEventListener('click', () => setTool('brush'));
 document.getElementById('toolFill').addEventListener('click', () => setTool('fill'));
 
+const toolZoomBtn = document.getElementById('toolZoom');
+const zoomControls = document.getElementById('zoomControls');
+toolZoomBtn.addEventListener('click', () => {
+  zoomMode = !zoomMode;
+  zoomControls.hidden = !zoomMode;
+  toolZoomBtn.classList.toggle('selected', zoomMode);
+  toolZoomBtn.textContent = zoomMode ? '✓ Done Zooming' : '🔍 Zoom';
+  stage.classList.toggle('zoom-active', zoomMode);
+  activePointers.clear();
+  panStart = null;
+  pinchStartDist = null;
+});
+document.getElementById('zoomIn').addEventListener('click', () => setZoom(zoomLevel + 0.25));
+document.getElementById('zoomOut').addEventListener('click', () => setZoom(zoomLevel - 0.25));
+
 const sizeSlider = document.getElementById('brushSize');
 sizeSlider.addEventListener('input', () => {
   brushSize = Number(sizeSlider.value);
@@ -319,6 +419,7 @@ document.getElementById('doneBtn').addEventListener('click', () => {
   const thumb = makeThumbnail();
   markCompleted(state, picture.id, thumb);
   launchConfetti();
+  playSuccessChime();
   const nextPic = PICTURES[idx + 1];
   setTimeout(() => {
     if (nextPic) {
@@ -341,6 +442,7 @@ document.getElementById('resetBtn').addEventListener('click', () => {
 buildPalette();
 buildBrushStyles();
 setTool('brush');
+initMusicToggle(document.getElementById('musicBtn'));
 loadPictureMaskAndOutline().catch((err) => {
   console.error(err);
   document.getElementById('picTitle').textContent = 'Could not load picture 😢';

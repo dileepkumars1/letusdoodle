@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Pop the Balloons - Let Us Doodle</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="color-topbar">
+    <button id="backBtn" class="icon-btn" aria-label="Back to games">←</button>
+    <h1>🎈 Pop the Balloons</h1>
+    <button id="musicBtn" class="icon-btn" aria-label="Turn music on">🔈</button>
+  </header>
+
+  <main class="game-main">
+    <p id="promptText" class="game-prompt">Tap a balloon to pop it!</p>
+    <div id="balloonField" class="balloon-field"></div>
+  </main>
+
+  <script type="module" src="js/game-balloons.js"></script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Animal Flashcards - Let Us Doodle</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="color-topbar">
+    <button id="backBtn" class="icon-btn" aria-label="Back to games">←</button>
+    <h1>🐾 Animal Flashcards</h1>
+    <button id="musicBtn" class="icon-btn" aria-label="Turn music on">🔈</button>
+  </header>
+
+  <main class="game-main">
+    <div class="flashcard-wrap">
+      <button id="flashcard" class="flashcard" aria-label="Tap to hear the animal's name again">
+        <img id="cardImg" src="" alt="" />
+      </button>
+      <div id="cardLabel" class="flashcard-label"></div>
+      <div class="flashcard-controls">
+        <button id="prevBtn" class="game-icon-btn" aria-label="Previous animal">⬅️</button>
+        <button id="repeatBtn" class="tool-btn">🔊 Say it again</button>
+        <button id="nextBtn" class="game-icon-btn" aria-label="Next animal">➡️</button>
+      </div>
+    </div>
+  </main>
+
+  <script type="module" src="js/game-animals.js"></script>
+</body>
+</html>

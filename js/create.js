@@ -55,9 +55,17 @@ let currentBrush = BRUSHES[0];
 let brushSize = 22;
 let drawing = false;
 let lastPt = null;
+let strokeRegionMaskCanvas = null; // clips the current brush stroke to the enclosed region it started in
 let dragMode = null; // 'move' | 'resize' | null
 let dragStart = null;
 const undoStack = [];
+
+const SCRATCH = 300; // generous padding around the largest possible brush stamp
+const SCRATCH_C = SCRATCH / 2;
+const scratchCanvas = document.createElement('canvas');
+scratchCanvas.width = SCRATCH;
+scratchCanvas.height = SCRATCH;
+const scratchCtx = scratchCanvas.getContext('2d');
 
 function pushUndo() {
   undoStack.push({
@@ -212,13 +220,12 @@ function hitTestShape(x, y) {
 
 // --- Fill / brush (same engine as the picture pages, but against the shapes mask) ---
 
-function floodFill(startX, startY, colorHex) {
+// Traces every pixel reachable from (startX, startY) without crossing blockedMask -
+// the same "enclosed region" both the fill tool and the brush's spill-proofing use.
+function computeConnectedRegion(startX, startY) {
   const idxPx = startY * SIZE + startX;
-  if (!blockedMask || blockedMask[idxPx]) return;
+  if (!blockedMask || blockedMask[idxPx]) return null;
 
-  const [r, g, b] = hexToRgb(colorHex);
-  const imageData = paintCtx.getImageData(0, 0, SIZE, SIZE);
-  const data = imageData.data;
   const visited = new Uint8Array(SIZE * SIZE);
   const stack = [[startX, startY]];
 
@@ -235,11 +242,6 @@ function floodFill(startX, startY, colorHex) {
       const px = y * SIZE + i;
       if (visited[px] || blockedMask[px]) continue;
       visited[px] = 1;
-      const p = px * 4;
-      data[p] = r;
-      data[p + 1] = g;
-      data[p + 2] = b;
-      data[p + 3] = 255;
     }
 
     for (const ny of [y - 1, y + 1]) {
@@ -257,33 +259,79 @@ function floodFill(startX, startY, colorHex) {
     }
   }
 
+  return visited;
+}
+
+function regionToMaskCanvas(visited) {
+  const canvas = document.createElement('canvas');
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+  const ctx = canvas.getContext('2d');
+  const imgData = ctx.createImageData(SIZE, SIZE);
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    imgData.data[i * 4 + 3] = visited[i] ? 255 : 0;
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return canvas;
+}
+
+function floodFill(startX, startY, colorHex) {
+  const visited = computeConnectedRegion(startX, startY);
+  if (!visited) return;
+
+  const [r, g, b] = hexToRgb(colorHex);
+  const imageData = paintCtx.getImageData(0, 0, SIZE, SIZE);
+  const data = imageData.data;
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    if (!visited[i]) continue;
+    const p = i * 4;
+    data[p] = r;
+    data[p + 1] = g;
+    data[p + 2] = b;
+    data[p + 3] = 255;
+  }
   paintCtx.putImageData(imageData, 0, 0);
 }
 
+// Draws one brush stamp on a small scratch canvas (so it keeps its natural anti-aliased
+// edges), then - if the current stroke is clipped to an enclosed region - erases whatever
+// falls outside that region before compositing onto the real paint layer. This is what
+// stops a stroke from spilling across a line into a neighbouring shape or the background.
 function stampBrush(x, y) {
   const r = (brushSize * currentBrush.sizeMul) / 2;
-  paintCtx.globalAlpha = currentBrush.alpha;
 
+  scratchCtx.clearRect(0, 0, SCRATCH, SCRATCH);
+  scratchCtx.globalAlpha = currentBrush.alpha;
   if (currentBrush.texture === 'grain') {
-    paintCtx.globalAlpha = currentBrush.alpha * (0.75 + Math.random() * 0.25);
+    scratchCtx.globalAlpha = currentBrush.alpha * (0.75 + Math.random() * 0.25);
   }
-
-  paintCtx.fillStyle = currentColor;
-  paintCtx.beginPath();
-  paintCtx.arc(x, y, r, 0, Math.PI * 2);
-  paintCtx.fill();
+  scratchCtx.fillStyle = currentColor;
+  scratchCtx.beginPath();
+  scratchCtx.arc(SCRATCH_C, SCRATCH_C, r, 0, Math.PI * 2);
+  scratchCtx.fill();
 
   if (currentBrush.texture === 'sparkle' && Math.random() < 0.5) {
-    paintCtx.globalAlpha = 0.9;
-    paintCtx.fillStyle = '#ffffff';
-    const sx = x + (Math.random() - 0.5) * r * 1.4;
-    const sy = y + (Math.random() - 0.5) * r * 1.4;
-    paintCtx.beginPath();
-    paintCtx.arc(sx, sy, Math.max(1.5, r * 0.12), 0, Math.PI * 2);
-    paintCtx.fill();
+    scratchCtx.globalAlpha = 0.9;
+    scratchCtx.fillStyle = '#ffffff';
+    const sx = SCRATCH_C + (Math.random() - 0.5) * r * 1.4;
+    const sy = SCRATCH_C + (Math.random() - 0.5) * r * 1.4;
+    scratchCtx.beginPath();
+    scratchCtx.arc(sx, sy, Math.max(1.5, r * 0.12), 0, Math.PI * 2);
+    scratchCtx.fill();
+  }
+  scratchCtx.globalAlpha = 1;
+
+  if (strokeRegionMaskCanvas) {
+    scratchCtx.globalCompositeOperation = 'destination-in';
+    scratchCtx.drawImage(
+      strokeRegionMaskCanvas,
+      x - SCRATCH_C, y - SCRATCH_C, SCRATCH, SCRATCH,
+      0, 0, SCRATCH, SCRATCH
+    );
+    scratchCtx.globalCompositeOperation = 'source-over';
   }
 
-  paintCtx.globalAlpha = 1;
+  paintCtx.drawImage(scratchCanvas, x - SCRATCH_C, y - SCRATCH_C);
 }
 
 function brushLine(x0, y0, x1, y1) {
@@ -356,6 +404,8 @@ function onPointerDown(evt) {
   } else {
     drawing = true;
     lastPt = [x, y];
+    const region = computeConnectedRegion(x, y);
+    strokeRegionMaskCanvas = region ? regionToMaskCanvas(region) : null;
     stampBrush(x, y);
   }
 }
@@ -390,6 +440,7 @@ function onPointerMove(evt) {
 function onPointerUp() {
   drawing = false;
   lastPt = null;
+  strokeRegionMaskCanvas = null;
   dragMode = null;
   dragStart = null;
 }

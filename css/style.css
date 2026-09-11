@@ -274,9 +274,9 @@ body.color-page {
   justify-content: center;
   padding: 6px;
   overflow: hidden;
+  touch-action: none;
 }
 .stage.cursor-fill .canvas-wrap { cursor: crosshair; }
-.stage.zoom-active .canvas-wrap { cursor: grab; }
 
 .canvas-wrap {
   position: relative;
@@ -386,12 +386,21 @@ body.color-page {
   gap: 10px;
   min-width: 0;
 }
+.zoom-hint {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .zoom-controls {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1;
-  min-width: 0;
+  flex: 0 0 auto;
 }
 .zoom-btn {
   width: 36px;

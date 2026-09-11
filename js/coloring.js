@@ -29,6 +29,7 @@ if (!picture || !isUnlocked(state, pictureId)) {
 }
 
 document.getElementById('picTitle').textContent = picture.title;
+document.title = `${picture.title} - Let Us Doodle`;
 
 const stage = document.getElementById('stage');
 const canvasWrap = document.querySelector('.canvas-wrap');
@@ -49,16 +50,26 @@ let currentBrush = BRUSHES[0];
 let brushSize = 22;
 let drawing = false;
 let lastPt = null;
+let strokeRegionMaskCanvas = null; // clips the current brush stroke to the enclosed region it started in
+let pendingSingleTouch = null; // holds a touch briefly in case a 2nd finger joins it as a pinch
 const undoStack = [];
+
+const SCRATCH = 300; // generous padding around the largest possible brush stamp
+const SCRATCH_C = SCRATCH / 2;
+const scratchCanvas = document.createElement('canvas');
+scratchCanvas.width = SCRATCH;
+scratchCanvas.height = SCRATCH;
+const scratchCtx = scratchCanvas.getContext('2d');
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 3;
-let zoomMode = false;
 let zoomLevel = 1;
 let panX = 0;
 let panY = 0;
-const activePointers = new Map(); // pointerId -> {x, y}, used for pan/pinch while zoomMode is on
-let panStart = null; // {x, y, panX, panY}
+// Two fingers on the picture always pan/zoom it (never the whole page); one finger always
+// uses the current tool. This tracks every active touch so we can tell the two apart.
+const activePointers = new Map(); // pointerId -> {x, y}
+let panStart = null; // {midX, midY, panX, panY}
 let pinchStartDist = null;
 let pinchStartZoom = null;
 
@@ -111,13 +122,12 @@ async function loadPictureMaskAndOutline() {
   URL.revokeObjectURL(url);
 }
 
-function floodFill(startX, startY, colorHex) {
+// Traces every pixel reachable from (startX, startY) without crossing blockedMask -
+// the same "enclosed region" both the fill tool and the brush's spill-proofing use.
+function computeConnectedRegion(startX, startY) {
   const idxPx = startY * SIZE + startX;
-  if (!blockedMask || blockedMask[idxPx]) return;
+  if (!blockedMask || blockedMask[idxPx]) return null;
 
-  const [r, g, b] = hexToRgb(colorHex);
-  const imageData = paintCtx.getImageData(0, 0, SIZE, SIZE);
-  const data = imageData.data;
   const visited = new Uint8Array(SIZE * SIZE);
   const stack = [[startX, startY]];
 
@@ -134,11 +144,6 @@ function floodFill(startX, startY, colorHex) {
       const px = y * SIZE + i;
       if (visited[px] || blockedMask[px]) continue;
       visited[px] = 1;
-      const p = px * 4;
-      data[p] = r;
-      data[p + 1] = g;
-      data[p + 2] = b;
-      data[p + 3] = 255;
     }
 
     for (const ny of [y - 1, y + 1]) {
@@ -156,33 +161,79 @@ function floodFill(startX, startY, colorHex) {
     }
   }
 
+  return visited;
+}
+
+function regionToMaskCanvas(visited) {
+  const canvas = document.createElement('canvas');
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+  const ctx = canvas.getContext('2d');
+  const imgData = ctx.createImageData(SIZE, SIZE);
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    imgData.data[i * 4 + 3] = visited[i] ? 255 : 0;
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return canvas;
+}
+
+function floodFill(startX, startY, colorHex) {
+  const visited = computeConnectedRegion(startX, startY);
+  if (!visited) return;
+
+  const [r, g, b] = hexToRgb(colorHex);
+  const imageData = paintCtx.getImageData(0, 0, SIZE, SIZE);
+  const data = imageData.data;
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    if (!visited[i]) continue;
+    const p = i * 4;
+    data[p] = r;
+    data[p + 1] = g;
+    data[p + 2] = b;
+    data[p + 3] = 255;
+  }
   paintCtx.putImageData(imageData, 0, 0);
 }
 
+// Draws one brush stamp on a small scratch canvas (so it keeps its natural anti-aliased
+// edges), then - if the current stroke is clipped to an enclosed region - erases whatever
+// falls outside that region before compositing onto the real paint layer. This is what
+// stops a stroke from spilling across a line into a neighbouring area.
 function stampBrush(x, y) {
   const r = (brushSize * currentBrush.sizeMul) / 2;
-  paintCtx.globalAlpha = currentBrush.alpha;
 
+  scratchCtx.clearRect(0, 0, SCRATCH, SCRATCH);
+  scratchCtx.globalAlpha = currentBrush.alpha;
   if (currentBrush.texture === 'grain') {
-    paintCtx.globalAlpha = currentBrush.alpha * (0.75 + Math.random() * 0.25);
+    scratchCtx.globalAlpha = currentBrush.alpha * (0.75 + Math.random() * 0.25);
   }
-
-  paintCtx.fillStyle = currentColor;
-  paintCtx.beginPath();
-  paintCtx.arc(x, y, r, 0, Math.PI * 2);
-  paintCtx.fill();
+  scratchCtx.fillStyle = currentColor;
+  scratchCtx.beginPath();
+  scratchCtx.arc(SCRATCH_C, SCRATCH_C, r, 0, Math.PI * 2);
+  scratchCtx.fill();
 
   if (currentBrush.texture === 'sparkle' && Math.random() < 0.5) {
-    paintCtx.globalAlpha = 0.9;
-    paintCtx.fillStyle = '#ffffff';
-    const sx = x + (Math.random() - 0.5) * r * 1.4;
-    const sy = y + (Math.random() - 0.5) * r * 1.4;
-    paintCtx.beginPath();
-    paintCtx.arc(sx, sy, Math.max(1.5, r * 0.12), 0, Math.PI * 2);
-    paintCtx.fill();
+    scratchCtx.globalAlpha = 0.9;
+    scratchCtx.fillStyle = '#ffffff';
+    const sx = SCRATCH_C + (Math.random() - 0.5) * r * 1.4;
+    const sy = SCRATCH_C + (Math.random() - 0.5) * r * 1.4;
+    scratchCtx.beginPath();
+    scratchCtx.arc(sx, sy, Math.max(1.5, r * 0.12), 0, Math.PI * 2);
+    scratchCtx.fill();
+  }
+  scratchCtx.globalAlpha = 1;
+
+  if (strokeRegionMaskCanvas) {
+    scratchCtx.globalCompositeOperation = 'destination-in';
+    scratchCtx.drawImage(
+      strokeRegionMaskCanvas,
+      x - SCRATCH_C, y - SCRATCH_C, SCRATCH, SCRATCH,
+      0, 0, SCRATCH, SCRATCH
+    );
+    scratchCtx.globalCompositeOperation = 'source-over';
   }
 
-  paintCtx.globalAlpha = 1;
+  paintCtx.drawImage(scratchCanvas, x - SCRATCH_C, y - SCRATCH_C);
 }
 
 function brushLine(x0, y0, x1, y1) {
@@ -213,43 +264,31 @@ function setZoom(z) {
   document.getElementById('zoomLevelLabel').textContent = Math.round(zoomLevel * 100) + '%';
 }
 
-function beginPanOrPinch(evt) {
-  activePointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
-  if (activePointers.size === 2) {
-    const pts = Array.from(activePointers.values());
-    pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-    pinchStartZoom = zoomLevel;
-    panStart = null;
-  } else if (activePointers.size === 1) {
-    panStart = { x: evt.clientX, y: evt.clientY, panX, panY };
-  }
+function beginPinch() {
+  const pts = Array.from(activePointers.values());
+  if (pts.length < 2) return;
+  pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+  pinchStartZoom = zoomLevel;
+  panStart = {
+    midX: (pts[0].x + pts[1].x) / 2,
+    midY: (pts[0].y + pts[1].y) / 2,
+    panX,
+    panY,
+  };
 }
 
-function updatePanOrPinch(evt) {
-  if (!activePointers.has(evt.pointerId)) return;
-  activePointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
-
-  if (activePointers.size >= 2 && pinchStartDist) {
-    const pts = Array.from(activePointers.values());
-    const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-    setZoom(pinchStartZoom * (dist / pinchStartDist));
-  } else if (panStart) {
-    panX = panStart.panX + (evt.clientX - panStart.x);
-    panY = panStart.panY + (evt.clientY - panStart.y);
-    clampPan();
-    applyTransform();
-  }
-}
-
-function endPanOrPinch(evt) {
-  activePointers.delete(evt.pointerId);
-  if (activePointers.size < 2) pinchStartDist = null;
-  if (activePointers.size === 1) {
-    const [[, pt]] = activePointers.entries();
-    panStart = { x: pt.x, y: pt.y, panX, panY };
-  } else {
-    panStart = null;
-  }
+function updatePinch() {
+  const pts = Array.from(activePointers.values());
+  if (pts.length < 2 || !panStart) return;
+  const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+  if (pinchStartDist) zoomLevel = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinchStartZoom * (dist / pinchStartDist)));
+  const midX = (pts[0].x + pts[1].x) / 2;
+  const midY = (pts[0].y + pts[1].y) / 2;
+  panX = panStart.panX + (midX - panStart.midX);
+  panY = panStart.panY + (midY - panStart.midY);
+  clampPan();
+  applyTransform();
+  document.getElementById('zoomLevelLabel').textContent = Math.round(zoomLevel * 100) + '%';
 }
 
 function toCanvasCoords(evt) {
@@ -257,6 +296,23 @@ function toCanvasCoords(evt) {
   const x = ((evt.clientX - rect.left) / rect.width) * SIZE;
   const y = ((evt.clientY - rect.top) / rect.height) * SIZE;
   return [Math.max(0, Math.min(SIZE - 1, Math.round(x))), Math.max(0, Math.min(SIZE - 1, Math.round(y)))];
+}
+
+// Commits a touch that was being held to see if it would turn into a pinch - either the
+// hold timed out, it moved enough to clearly be a stroke, or it lifted before either happened.
+function commitPendingTouch(pending) {
+  clearTimeout(pending.timer);
+  if (pendingSingleTouch === pending) pendingSingleTouch = null;
+  pushUndo();
+  if (currentTool === 'fill') {
+    floodFill(pending.x, pending.y, currentColor);
+  } else {
+    drawing = true;
+    lastPt = [pending.x, pending.y];
+    const region = computeConnectedRegion(pending.x, pending.y);
+    strokeRegionMaskCanvas = region ? regionToMaskCanvas(region) : null;
+    stampBrush(pending.x, pending.y);
+  }
 }
 
 function onPointerDown(evt) {
@@ -267,29 +323,62 @@ function onPointerDown(evt) {
     // Some environments (or synthetic events) don't have an active pointer to capture; safe to ignore.
   }
 
-  if (zoomMode) {
-    beginPanOrPinch(evt);
+  activePointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+
+  if (activePointers.size >= 2) {
+    // A second finger just landed - hand off to pinch/pan and abandon any in-progress stroke,
+    // including one that was only tentatively pending (not yet committed to paint).
+    if (pendingSingleTouch) {
+      clearTimeout(pendingSingleTouch.timer);
+      pendingSingleTouch = null;
+    }
+    drawing = false;
+    lastPt = null;
+    strokeRegionMaskCanvas = null;
+    beginPinch();
     return;
   }
 
   const [x, y] = toCanvasCoords(evt);
-  pushUndo();
 
-  if (currentTool === 'fill') {
-    floodFill(x, y, currentColor);
-  } else {
-    drawing = true;
-    lastPt = [x, y];
-    stampBrush(x, y);
+  if (evt.pointerType !== 'touch') {
+    // Mouse/pen can't pinch, so there's nothing to disambiguate - act immediately as before.
+    pushUndo();
+    if (currentTool === 'fill') {
+      floodFill(x, y, currentColor);
+    } else {
+      drawing = true;
+      lastPt = [x, y];
+      const region = computeConnectedRegion(x, y);
+      strokeRegionMaskCanvas = region ? regionToMaskCanvas(region) : null;
+      stampBrush(x, y);
+    }
+    return;
   }
+
+  // A single finger touched down: hold off very briefly in case a second finger is about to
+  // join it as a pinch, so a pinch never leaves a stray dot at its starting point.
+  const pending = { pointerId: evt.pointerId, x, y, clientX: evt.clientX, clientY: evt.clientY, timer: null };
+  pending.timer = setTimeout(() => commitPendingTouch(pending), 50);
+  pendingSingleTouch = pending;
 }
 
 function onPointerMove(evt) {
-  if (zoomMode) {
+  if (pendingSingleTouch && pendingSingleTouch.pointerId === evt.pointerId && activePointers.size === 1) {
+    const moved = Math.hypot(evt.clientX - pendingSingleTouch.clientX, evt.clientY - pendingSingleTouch.clientY);
+    if (moved > 4) commitPendingTouch(pendingSingleTouch);
+  }
+
+  if (activePointers.has(evt.pointerId)) {
+    activePointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+  }
+
+  if (activePointers.size >= 2) {
     evt.preventDefault();
-    updatePanOrPinch(evt);
+    updatePinch();
     return;
   }
+
   if (!drawing || currentTool !== 'brush') return;
   evt.preventDefault();
   const [x, y] = toCanvasCoords(evt);
@@ -298,12 +387,22 @@ function onPointerMove(evt) {
 }
 
 function onPointerUp(evt) {
-  if (zoomMode) {
-    endPanOrPinch(evt);
+  if (pendingSingleTouch && pendingSingleTouch.pointerId === evt.pointerId) {
+    commitPendingTouch(pendingSingleTouch); // lifted before the hold finished - treat as a tap
+  }
+
+  activePointers.delete(evt.pointerId);
+
+  if (activePointers.size >= 2) {
+    beginPinch(); // keep pinching smoothly with whichever two fingers remain
     return;
   }
+
   drawing = false;
   lastPt = null;
+  strokeRegionMaskCanvas = null;
+  pinchStartDist = null;
+  panStart = null;
 }
 
 paintCanvas.addEventListener('pointerdown', onPointerDown);
@@ -364,18 +463,9 @@ function setTool(tool) {
 document.getElementById('toolBrush').addEventListener('click', () => setTool('brush'));
 document.getElementById('toolFill').addEventListener('click', () => setTool('fill'));
 
-const toolZoomBtn = document.getElementById('toolZoom');
-const zoomControls = document.getElementById('zoomControls');
-toolZoomBtn.addEventListener('click', () => {
-  zoomMode = !zoomMode;
-  zoomControls.hidden = !zoomMode;
-  toolZoomBtn.classList.toggle('selected', zoomMode);
-  toolZoomBtn.textContent = zoomMode ? '✓ Done Zooming' : '🔍 Zoom';
-  stage.classList.toggle('zoom-active', zoomMode);
-  activePointers.clear();
-  panStart = null;
-  pinchStartDist = null;
-});
+// Pinch (or two-finger drag) on the picture always zooms/pans it - see onPointerDown/Move/Up.
+// These +/- buttons are the mouse/accessibility-friendly equivalent, always available.
+stage.addEventListener('gesturestart', (evt) => evt.preventDefault()); // legacy Safari pinch gesture
 document.getElementById('zoomIn').addEventListener('click', () => setZoom(zoomLevel + 0.25));
 document.getElementById('zoomOut').addEventListener('click', () => setZoom(zoomLevel - 0.25));
 
